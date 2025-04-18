@@ -13,8 +13,7 @@ let isConnected = false;
 let clients = [];
 
 let sending = false;
-let awaitingResponse = false;
-let commandResponse = null;
+const pendingRequests = [];
 
 // SSE for terminal output
 app.get('/events', (req, res) => {
@@ -51,8 +50,15 @@ app.post('/connect', (req, res) => {
 
   tcpClient.on('data', (data) => {
     const msg = data.toString().trim();
+
+    // Check if there's a pending request
+    const currentRequest = pendingRequests.shift();
+    if (currentRequest) {
+      currentRequest.resolve(msg);
+    }
+
     console.log('<<:', msg);
-    broadcast(msg);
+    broadcast('<< ' + msg);
   });
 
   tcpClient.on('close', () => {
@@ -84,23 +90,45 @@ app.post('/disconnect', (req, res) => {
   }
 });
 
-app.post('/send-line', (req, res) => {
+app.post('/send-line', async (req, res) => {
   const { line } = req.body;
 
   if (!tcpClient || !isConnected) {
     return res.status(400).send('Not connected');
   }
 
-  awaitingResponse = true;
-  commandResponse = null;
-
-  // Send the line
-  tcpClient.write(line + '\n');
-
-  console.log(`>>: ${line}`);
-  broadcast(`>> ${line}`);
-  res.send('ok');
+  try {
+    const response = await sendCommand(line);
+    res.send(response);
+  } catch (err) {
+    res.status(504).send('TCP response timed out');
+  }
 });
+
+// Helper to send a command and wait for a response
+function sendCommand(line) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout waiting for response'));
+      // Remove this request from the queue if it’s still there
+      const idx = pendingRequests.findIndex(r => r.resolve === resolve);
+      if (idx !== -1) pendingRequests.splice(idx, 1);
+    }, 5000);
+
+    pendingRequests.push({
+      resolve: (msg) => {
+        clearTimeout(timeout);
+        resolve(msg);
+      },
+      reject
+    });
+
+    // Write to TCP
+    tcpClient.write(line + '\n');
+    console.log(`>>: ${line}`);
+    broadcast(`>> ${line}`);
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`🌐 Server running at http://localhost:${PORT}`);
