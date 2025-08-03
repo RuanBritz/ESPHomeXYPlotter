@@ -510,6 +510,8 @@
             if (connected) {
               running = false;
               paused = false;
+              sendCommand("G90");
+              sendCommand("F3000");
               runGcode(); // Retry G-code execution
             }
           }, 2000);
