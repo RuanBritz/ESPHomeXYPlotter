@@ -1,593 +1,267 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ESP32 G-code Sender</title>
-  <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 20px;
-    }
-
-    #terminal {
-      width: 100%;
-      height: 300px;
-      background: #000;
-      color: #0f0;
-      font-family: monospace;
-      padding: 10px;
-      overflow-y: scroll;
-      white-space: pre-wrap;
-      border: 1px solid #333;
-      margin-bottom: 10px;
-    }
-
-    #gcodeBox {
-      width: 100%;
-      height: 200px;
-      background: #f4f4f4;
-      color: #000;
-      font-family: monospace;
-      padding: 10px;
-      overflow-y: scroll;
-      white-space: pre-wrap;
-      border: 1px solid #333;
-      margin-bottom: 10px;
-      resize: none;
-    }
-
-    .highlight-line {
-      background-color: yellow;
-      color: black;
-      font-weight: bold;
-    }
-
-    .checkbox-label {
-      margin-right: 5px;
-    }
-
-    /* Customize buttons with Bootstrap */
-    .direction-btn {
-      width: 80px;
-      height: 40px;
-      font-size: 14px;
-    }
-
-    /* Progress Bar Styling */
-    #progressBar {
-      height: 100%;
-      background: green;
-    }
-  </style>
+  <title>XY Plotter</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235b8cff' stroke-width='2'%3E%3Cpath d='M12 19l7-7 3 3-7 7-3-3z'/%3E%3Cpath d='M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+  <script type="module" src="js/main.js"></script>
 </head>
-
 <body>
 
-  <div class="container">
-
-    <div class="row">
-      <div class="col">
-        <h2>ESP32 TCP G-code Interface</h2>
-      </div>
+  <header class="topbar">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+      XY Plotter
     </div>
 
-    <div class="row">
-      <div class="col-6">
+    <form id="connForm" class="conn" autocomplete="off">
+      <input id="host" placeholder="Plotter IP" aria-label="Plotter IP address" required>
+      <input id="port" type="number" min="1" max="65535" placeholder="Port" aria-label="Port" required>
+      <label class="check" title="Reconnect automatically if the connection drops">
+        <input type="checkbox" id="autoReconnect"> Auto-reconnect
+      </label>
+      <button id="connectBtn" class="primary" type="submit">Connect</button>
+    </form>
 
-        <!-- Connection Settings -->
-        <div class="row align-items-end">
-          <div class="col-6 mb-3 d-flex flex-column justify-content-end">
-            <label class="form-label">ESP32 IP:</label>
-            <input id="ip" class="form-control" value="192.168.100.228">
-          </div>
+    <span class="spacer"></span>
 
-          <div class="col-4 mb-3 d-flex flex-column justify-content-end">
-            <label class="form-label">Port:</label>
-            <input id="port" class="form-control" value="1234">
-          </div>
-
-          <div class="col-2">
-            <div class="col-12 mb-3">
-              <span id="connectionStatus" class="badge bg-secondary">Disconnected</span>
-            </div>
-          </div>
-
-          <div class="col-12">
-            <button class="btn btn-primary" onclick="connect()" id="connectBtn">Connect</button>
-            <button class="btn btn-danger" onclick="disconnect()" id="disconnectBtn">Disconnect</button>
-          </div>
-        </div>
-
-
-        <!-- G-Code area -->
-        <div class="row">
-          <div class="col-12">
-            <h3 class="mt-4">G-code File</h3>
-          </div>
-          <div class="col-6">
-            <input type="file" id="gcodeFile" class="form-control mb-3" accept=".gcode" onchange="loadGcodeFile(event)">
-          </div>
-          <div class="col-6">
-            <button onclick="runGcode()" class="btn btn-primary">Run</button>
-            <button onclick="pauseGcode()" class="btn btn-warning">Pause</button>
-          </div>
-          <div class="col-12">
-            <input class="form-check-input" type="checkbox" value="" id="enablRetry" checked>
-            <label class="form-check-label" for="enablRetry">
-              Enable retry if connection is lost
-            </label>
-          </div>
-          <div class="col-12 mt-2">
-            <input class="form-check-input" type="checkbox" value="" id="scrollIntoViewCheckbox" checked>
-            <label class="form-check-label" for="scrollIntoViewCheckbox">
-              Enable scroll into view
-            </label>
-            <!-- G-code Textarea -->
-            <div id="gcodeBox"></div>
-            <div class="progress mb-3">
-              <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0"
-                aria-valuemin="0" aria-valuemax="100"></div>
-            </div>
-          </div>
-          <div class="col-12">
-            <div class="mb-3">
-              <label for="currentLineInput" class="form-label">Current Line:</label>
-              <input type="number" id="currentLineInput" class="form-control" value="0" onchange="setCurrentLine()">
-            </div>
-          </div>
-        </div>
-
-        <div class="row">
-          <h3 class="mt-4">Draw Box</h3>
-          <div class="col-6">
-            <div class="mb-3">
-              <label for="boxX" class="form-label">X:</label>
-              <input type="number" id="boxX" class="form-control" placeholder="Width">
-            </div>
-          </div>
-          <div class="col-6">
-            <div class="mb-3">
-              <label for="boxY" class="form-label">Y:</label>
-              <input type="number" id="boxY" class="form-control" placeholder="Height">
-            </div>
-          </div>
-
-          <div class="col-4">
-            <button onclick="drawBoxFromInput()" class="btn btn-success">Draw Box</button>
-          </div>
-        </div>
-
-      </div>
-
-      <div class="col-6">
-        <div class="row">
-          <div class="col-12">
-            <h3>Terminal</h3>
-            <div id="terminal"></div>
-            <div class="input-group mb-3">
-              <input id="inputLine" class="form-control" placeholder="Type G-code here...">
-              <button onclick="sendManualLine()" class="btn btn-primary">Send</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="col-12">
-            <h3 class="mt-2">Plotter Controls</h3>
-          </div>
-          <div class="col-12">
-            <div class="btn-group mb-3">
-              <button onclick="getInfo()" class="btn btn-secondary">Get Info</button>
-              <button onclick="halt()" class="btn btn-danger">Halt</button>
-              <button onclick="resetZero()" class="btn btn-warning">Set Zero</button>
-              <button onclick="moveZero()" class="btn btn-info">Move Zero</button>
-            </div>
-          </div>
-          <div class="col-6">
-            <!-- Arrow Key Layout -->
-            <div class="d-flex flex-column align-items-center mb-3">
-              <div>
-                <button onclick="moveYRight()" class="btn btn-primary direction-btn mx-2">Y+</button>
-              </div>
-              <div class="d-flex justify-content-center mt-2">
-                <button onclick="moveXLeft()" class="btn btn-primary direction-btn mx-2">X-</button>
-                <button disabled class="btn btn-light mx-2" style="pointer-events: none; opacity: 0;">•</button>
-                <!-- spacer -->
-                <button onclick="moveXRight()" class="btn btn-primary direction-btn mx-2">X+</button>
-              </div>
-              <div class="mt-2">
-                <button onclick="moveYLeft()" class="btn btn-primary direction-btn mx-2">Y-</button>
-              </div>
-            </div>
-          </div>
-          <div class="col-3">
-            <div class="row">
-              <div class="col-12">
-                <button onclick="sendPenUp()" class="btn btn-success w-100">Pen Up</button>
-              </div>
-              <div class="col-12">
-                <button onclick="sendPenDown()" class="btn btn-danger w-100">Pen Down</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="machine-status">
+      <span id="connPill" class="pill">Disconnected</span>
+      <span id="machinePill" class="pill hidden"></span>
+      <span id="position" class="position hidden">X <b id="posX">0.00</b> Y <b id="posY">0.00</b></span>
     </div>
 
-  </div>
-
-
-  <script>
-
-    let connected = false;
-    let gcodeLines = [];
-    let currentLine = 0;
-    let running = false;
-    let paused = false;
-    let socket; // WebSocket reference
-
-    const terminal = document.getElementById('terminal');
-    const gcodeBox = document.getElementById('gcodeBox');
-    const scrollIntoViewCheckbox = document.getElementById('scrollIntoViewCheckbox');
-    const pendingCommandResolvers = [];
-
-
-    /////////// Terminal Section
-
-    // Setup WebSocket connection
-    function setupWebSocket() {
-      socket = new WebSocket(`ws://${location.host}/ws`);
-
-      socket.onopen = () => {
-        console.log('WebSocket connection established');
-      };
-
-      socket.onmessage = (event) => {
-        const message = event.data;
-        appendTerminal(message);
-        handleMessage(message);
-
-        if (pendingCommandResolvers.length > 0) {
-          const { resolve, reject } = pendingCommandResolvers.shift();
-          resolve(message);
-        }
-      };
-
-      socket.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-        appendTerminal('WebSocket error occurred.');
-      };
-
-      socket.onclose = () => {
-        console.log('WebSocket connection closed');
-        appendTerminal('WebSocket connection closed');
-      };
-    }
-
-    setupWebSocket(); // Initialize on page load
-
-    function handleMessage(data) {
-      if (data.includes('Connection closed')) {
-        connected = false;
-        updateConnectionStatus();
-      }
-    }
-
-    function connect() {
-      const ip = document.getElementById('ip').value;
-      const port = document.getElementById('port').value;
-
-      if (!connected) {
-        fetch('/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ip, port })
-        })
-          .then(res => res.text())
-          .then(msg => {
-            connected = true;
-            updateConnectionStatus();
-          })
-          .catch(err => alert('Connection failed: ' + err));
-      } else {
-        appendTerminal('Already connected.');
-      }
-    }
-
-    function disconnect() {
-      if (connected) {
-        fetch('/disconnect', { method: 'POST' })
-          .then(res => res.text())
-          .then(msg => {
-            connected = false;
-            updateConnectionStatus();
-          }).catch(err => alert('Error: ' + err));
-      } else {
-        appendTerminal('Already disconnected.');
-      }
-    }
-
-    function sendManualLine() {
-      const line = document.getElementById('inputLine').value;
-      if (!line.trim()) return;
-
-      sendCommand(line); // Send the command to the server
-      document.getElementById('inputLine').value = ''; // Clear the input field
-    }
-
-    function appendTerminal(text) {
-      terminal.innerText += text + '\n';
-      terminal.scrollTop = terminal.scrollHeight;
-    }
-
-    function sendCommand(command) {
-      command = command.replace(/\(.*?\)|;.*$/g, '').trim(); // Remove comments
-      command = command.replace(/^N\d+\s*/i, '');             // Remove line numbers
-      command = command.replace(/\s+/g, ' ').trim();          // Normalize whitespace
-      command = command.toUpperCase();                        // Standardize casing
-
-      if (!command) return Promise.resolve();
-
-      return new Promise((resolve, reject) => {
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-          appendTerminal('WebSocket not connected.');
-          return reject('WebSocket not connected');
-        }
-
-        // Store resolver
-        pendingCommandResolvers.push({ resolve, reject, command });
-
-        // Optional timeout handling
-        setTimeout(() => {
-          const index = pendingCommandResolvers.findIndex(r => r.resolve === resolve);
-          if (index !== -1) {
-            pendingCommandResolvers.splice(index, 1);
-            reject('Timeout waiting for OK');
-          }
-        }, 60000); // 60 seconds
-        socket.send(command);
-        appendTerminal(`>> ${command}`);
-      });
-    }
-
-    document.getElementById('inputLine').addEventListener('keydown', function (event) {
-      if (event.key === 'Enter') {
-        event.preventDefault();  // Prevent the default behavior (e.g., submitting a form)
-        sendManualLine();  // Call the function when Enter is pressed
-      }
-    });
-
-    /////////// UI updates
-
-    function updateConnectionStatus() {
-      const statusBadge = document.getElementById('connectionStatus');
-      if (connected) {
-        statusBadge.className = 'badge bg-success';
-        statusBadge.innerText = 'Connected';
-      } else {
-        statusBadge.className = 'badge bg-danger';
-        statusBadge.innerText = 'Disconnected';
-      }
-    }
-
-    /////////// GCODE File Section with Line Numbers
-
-    function loadGcodeFile(event) {
-      currentLine = 0;
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        const content = e.target.result;
-        gcodeLines = content.split('\n'); // Store G-code lines in an array
-        displayGcodeWithLineNumbers(gcodeLines); // Display the G-code content with line numbers
-        getMaxXYFromGcode(gcodeLines); // Get max X and Y values from G-code
-      };
-      reader.readAsText(file);
-    }
-
-    function getMaxXYFromGcode(gcodeLines) {
-      let maxX = Number.NEGATIVE_INFINITY;
-      let maxY = Number.NEGATIVE_INFINITY;
-
-      const xRegex = /X(-?\d+(\.\d+)?)/i;
-      const yRegex = /Y(-?\d+(\.\d+)?)/i;
-
-      for (const line of gcodeLines) {
-        const xMatch = line.match(xRegex);
-        const yMatch = line.match(yRegex);
-
-        if (xMatch) {
-          const xVal = parseFloat(xMatch[1]);
-          if (!isNaN(xVal)) maxX = Math.max(maxX, xVal);
-        }
-
-        if (yMatch) {
-          const yVal = parseFloat(yMatch[1]);
-          if (!isNaN(yVal)) maxY = Math.max(maxY, yVal);
-        }
-      }
-
-      document.getElementById('boxX').value = maxX;
-      document.getElementById('boxY').value = maxY;
-    }
-
-    // Function to display G-code with line numbers
-    function displayGcodeWithLineNumbers(lines) {
-      gcodeBox.innerHTML = lines.map((line, index) =>
-        `<div id="gcode-line-${index}">${index + 1}: ${line}</div>`
-      ).join('');
-    }
-
-    function updateProgressBar() {
-      const percent = Math.floor(((currentLine + 1) / gcodeLines.length) * 100);
-      document.getElementById('progressBar').style.width = percent + '%';
-    }
-
-    function setCurrentLine() {
-      const newLine = parseInt(document.getElementById('currentLineInput').value, 10);
-      if (newLine >= 0 && newLine < gcodeLines.length) {
-        currentLine = newLine;
-      }
-    }
-
-    // Run G-code Line by Line
-    function runGcode() {
-      if (running) return; // If already running, do nothing
-      running = true;
-      paused = false;
-      sendNextLine();
-    }
-
-    // Send the next G-code line
-    async function sendNextLine() {
-      if (paused || currentLine >= gcodeLines.length) {
-        currentLine = 0; // Reset current line index
-        running = false;
-        appendTerminal('G-code execution completed or paused.');
-        return;
-      }
-
-      document.getElementById('currentLineInput').value = currentLine; // Update the current line input
-
-      updateProgressBar(); // Update the progress bar
-
-      // Highlight current line
-      const previous = document.querySelector('.highlight-line');
-      if (previous) previous.classList.remove('highlight-line');
-
-      const current = document.getElementById(`gcode-line-${currentLine}`);
-      if (current) {
-        if (scrollIntoViewCheckbox.checked) {
-          current.classList.add('highlight-line');
-          current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }
-
-      const line = gcodeLines[currentLine].trim();
-      if (line) {
-        let response = await sendCommand(line); // Send the G-code line to the server
-        if (response === '<< ok') {
-          if (!paused) {
-            setTimeout(() => {
-              currentLine++;
-              sendNextLine();  // Send the next line after the delay
-            }, 10);
-          }
-        }
-        else {
-          appendTerminal('Error: ' + response); // Display error message in terminal
-          Retry();
-        }
-
-      } else {
-        currentLine++; // Skip empty lines
-        sendNextLine(); // Send next line
-      }
-    }
-
-    // Pause G-code Execution
-    function pauseGcode() {
-      paused = true; // Set pause flag to true
-      running = false; // Stop further sending of lines
-      appendTerminal('Paused');
-    }
-
-    function Retry() {
-      if (document.getElementById('enablRetry').checked) {
-        appendTerminal('Retrying in 10s...');
-        setTimeout(() => {
-          if (!connected) {
-            connect(); // Retry connection
-          }
-          setTimeout(() => {
-            if (connected) {
-              running = false;
-              paused = false;
-              sendCommand("G90");
-              sendCommand("F3000");
-              runGcode(); // Retry G-code execution
-            }
-          }, 2000);
-
-        }, 10000);
-      }
-    }
-
-
-    /////////// Plotter control section
-
-    function halt() {
-      sendCommand('!');
-    }
-
-    function sendPenUp() {
-      sendCommand('M5');
-    }
-
-    function sendPenDown() {
-      sendCommand('M3 S1000');
-    }
-
-    function getInfo() {
-      sendCommand('$$');
-    }
-
-    function resetZero() {
-      sendCommand('G10 P0 L20 X0 Y0 Z0');
-    }
-
-    function moveXLeft() {
-      sendCommand('G21G91G1X-10F1000');
-    }
-
-    function moveXRight() {
-      sendCommand('G21G91G1X10F1000');
-    }
-
-    function moveYLeft() {
-      sendCommand('G21G91G1Y10F1000');
-    }
-
-    function moveYRight() {
-      sendCommand('G21G91G1Y-10F1000');
-    }
-
-    function drawBoxFromInput() {
-      const x = parseFloat(document.getElementById('boxX').value);
-      const y = parseFloat(document.getElementById('boxY').value);
-      if (isNaN(x) || isNaN(y)) {
-        alert('Please enter valid X and Y values.');
-        return;
-      }
-
-      sendCommand('G90');         // Absolute positioning
-      sendCommand('M5');          // Pen up
-      sendCommand('F6000');          // Set feed rate
-      sendCommand('G90 X0 Y0');    // Move to origin
-      sendCommand('M3 S1000');    // Pen down
-
-      sendCommand(`G1 X${x} Y0`);   // Bottom edge
-      sendCommand(`G1 X${x} Y${y}`); // Right edge
-      sendCommand(`G1 X0 Y${y}`);   // Top edge
-      sendCommand(`G90 X0 Y0`);      // Left edge (back to start)
-
-      sendCommand('M5');          // Pen up
-    }
-
-    function moveZero() {
-      sendCommand('M5');
-      sendCommand('G90 X0 Y0 F6000'); // Move to zero position
-    }
-
-  </script>
+    <button id="settingsBtn" class="ghost icon" title="Settings" aria-label="Settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </header>
+
+  <main class="layout">
+
+    <!-- ============ Job ============ -->
+    <section class="card job" id="jobCard">
+      <div class="card-head">
+        <div class="file-info">
+          <span id="fileName" class="file-name">No file loaded</span>
+          <span id="fileStats" class="file-stats">Open or drop a G-code file</span>
+        </div>
+        <label class="btn" id="openBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Open file
+          <input type="file" id="fileInput" accept=".gcode,.gco,.gc,.nc,.ngc,.tap,.txt" hidden>
+        </label>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="active" data-tab="previewPane" role="tab">Preview</button>
+        <button data-tab="codePane" role="tab">G-code</button>
+      </div>
+
+      <div class="tab-body">
+        <div id="previewPane" class="pane preview-pane">
+          <canvas id="baseCanvas"></canvas>
+          <canvas id="progressCanvas"></canvas>
+          <canvas id="overlayCanvas" class="overlay"></canvas>
+          <div id="dropHint" class="drop-hint">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <div>Drop a G-code file here<br><small>or use “Open file”</small></div>
+          </div>
+          <div class="preview-tools">
+            <button id="fitBtn" class="small" title="Fit drawing (double-click)">Fit</button>
+            <button id="originBtn" class="small" title="Show bed from origin">Origin</button>
+          </div>
+          <div class="legend">
+            <span><i style="background:#5b8cff"></i>Plotted</span>
+            <span><i style="background:#7d869b"></i>To plot</span>
+            <span><i style="background:#f5a524;opacity:.6"></i>Pen up</span>
+          </div>
+        </div>
+        <div id="codePane" class="pane hidden">
+          <div id="codeList" class="code-list"></div>
+          <textarea id="codeEditor" class="code-editor hidden" spellcheck="false" autocomplete="off"
+                    autocapitalize="off" wrap="off" aria-label="G-code editor"></textarea>
+          <div class="preview-tools code-tools">
+            <span id="editStatus" class="edit-status hidden"></span>
+            <button id="editBtn" class="small" title="Edit the G-code" disabled>Edit</button>
+            <button id="downloadBtn" class="small" title="Save the G-code to a file" disabled>Download</button>
+            <button id="cancelEditBtn" class="small hidden" title="Discard your changes">Cancel</button>
+            <button id="applyEditBtn" class="small primary hidden" title="Load the edited G-code as the job (Ctrl+S)">Apply</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="progress" id="progress"><div id="progressFill"></div></div>
+      <div class="progress-meta">
+        <span id="jobPill" class="pill">No job</span>
+        <span>Line <span id="progressLine" class="mono">0 / 0</span></span>
+        <span id="progressPct" class="mono">0%</span>
+        <span>Elapsed <span id="elapsed" class="mono">0s</span></span>
+        <span id="etaWrap" class="hidden">ETA <span id="eta" class="mono"></span></span>
+      </div>
+
+      <div id="pauseReason" class="alert hidden"></div>
+
+      <div class="job-actions">
+        <button id="startBtn" class="primary" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg> Start
+        </button>
+        <button id="pauseBtn" class="warn hidden">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="4" width="5" height="16"/><rect x="14" y="4" width="5" height="16"/></svg> Pause
+        </button>
+        <button id="resumeBtn" class="primary hidden">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg> Resume
+        </button>
+        <button id="stopBtn" class="danger" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14"/></svg> Stop
+        </button>
+
+        <label class="inline-field" title="Line to start or resume from. Click a line in the G-code tab to pick it.">
+          From line <input type="number" id="lineInput" min="1" value="1">
+        </label>
+        <button id="setLineBtn" class="small hidden" title="Resume from this line instead">Set resume line</button>
+
+        <span class="spacer"></span>
+        <label class="check" title="After an unexpected disconnect, resume automatically once reconnected (requires auto-reconnect)">
+          <input type="checkbox" id="autoResume"> Auto-resume
+        </label>
+      </div>
+    </section>
+
+    <!-- ============ Side ============ -->
+    <aside class="side">
+
+      <section class="card" id="machineCard">
+        <div class="card-head"><h2>Machine</h2></div>
+
+        <div class="jog-wrap">
+          <div class="jog-pad">
+            <span></span>
+            <button data-jog="0,1" title="Jog Y+ (↑)">Y+</button>
+            <span></span>
+            <button data-jog="-1,0" title="Jog X− (←)">X−</button>
+            <button id="goZeroBtn" class="center" title="Go to zero (pen up)">⌂</button>
+            <button data-jog="1,0" title="Jog X+ (→)">X+</button>
+            <span></span>
+            <button data-jog="0,-1" title="Jog Y− (↓)">Y−</button>
+            <span></span>
+          </div>
+          <div class="jog-side">
+            <div class="segmented" id="stepSelect" title="Jog distance (mm)">
+              <button data-step="0.1">0.1</button>
+              <button data-step="1">1</button>
+              <button data-step="10">10</button>
+              <button data-step="50">50</button>
+            </div>
+            <label class="inline-field">Feed <input type="number" id="jogFeed" min="1" step="100" style="width:100%"></label>
+            <button id="penUpBtn" class="pen">Pen up</button>
+            <button id="penDownBtn" class="pen">Pen down</button>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="setZeroBtn" title="Make the current position X0 Y0">Set zero</button>
+          <button id="unlockBtn" title="Clear alarm lock ($X)">Unlock</button>
+          <button id="infoBtn" title="Print controller settings ($$)">Settings $$</button>
+          <button id="statusBtn" title="Request a status report (?)">Status ?</button>
+          <button id="holdBtn" class="warn" title="Feed hold: stop motion now (!)">Hold</button>
+          <button id="cycleBtn" title="Resume after hold (~)">Cycle ~</button>
+          <button id="resetBtn" class="danger" title="Soft reset (Ctrl-X): emergency stop, aborts the job" style="grid-column: span 2">Reset</button>
+        </div>
+      </section>
+
+      <section class="card" id="shapeCard">
+        <div class="card-head"><h2>Box &amp; frame</h2><span class="spacer"></span><button id="boundsBtn" class="small ghost" title="Use the loaded file's bounds">From file</button></div>
+        <div class="row">
+          <label class="field"><span>X</span><input type="number" id="boxX" value="0" step="any"></label>
+          <label class="field"><span>Y</span><input type="number" id="boxY" value="0" step="any"></label>
+          <label class="field"><span>Width</span><input type="number" id="boxW" value="100" step="any" min="0"></label>
+          <label class="field"><span>Height</span><input type="number" id="boxH" value="100" step="any" min="0"></label>
+        </div>
+        <div class="row">
+          <button id="frameBtn" style="flex:1" title="Trace the box with the pen up, to check placement on the paper">Trace (pen up)</button>
+          <button id="drawBoxBtn" style="flex:1" title="Draw the box with the pen down">Draw box</button>
+        </div>
+      </section>
+
+      <section class="card terminal-card">
+        <div class="card-head">
+          <h2>Console</h2>
+          <span class="spacer"></span>
+          <label class="check" title="Show every line sent and acknowledged during a job"><input type="checkbox" id="showJobTraffic"> Job traffic</label>
+          <button id="clearTermBtn" class="small ghost">Clear</button>
+        </div>
+        <div id="terminal" class="terminal" role="log" aria-live="polite"></div>
+        <form id="termForm" class="term-form" autocomplete="off">
+          <input id="termInput" placeholder="G-code or $ command  (↑/↓ history)" aria-label="Command">
+          <button type="submit" id="termSend">Send</button>
+        </form>
+      </section>
+    </aside>
+  </main>
+
+  <!-- ============ Settings ============ -->
+  <dialog id="settingsDialog">
+    <form method="dialog" id="settingsForm">
+      <h3>Settings</h3>
+
+      <fieldset>
+        <legend>Pen</legend>
+        <label class="field"><span>Pen up command</span><input name="penUp"></label>
+        <label class="field"><span>Pen down command</span><input name="penDown"></label>
+        <label class="field"><span>Box draw feed (mm/min)</span><input name="drawFeed" type="number" min="1"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Jogging</legend>
+        <label class="field full"><span>Jog method</span>
+          <select name="jogMode">
+            <option value="g91">G91 relative move, then G90 (any GRBL-like firmware)</option>
+            <option value="jog">$J= jog command (GRBL 1.1+, cancellable)</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" name="invertX"> Invert X</label>
+        <label class="check"><input type="checkbox" name="invertY"> Invert Y</label>
+        <label class="check full"><input type="checkbox" name="keyboardJog"> Arrow keys jog (when not typing)</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Streaming</legend>
+        <label class="field full"><span>Flow control</span>
+          <select name="streaming">
+            <option value="send-response">Safe: wait for each “ok” (any firmware)</option>
+            <option value="char-count">Fast: fill GRBL's receive buffer (character counting)</option>
+          </select>
+          <small>Fast mode keeps GRBL's planner fed, so drawings made of many tiny segments don't stutter over WiFi. Use it only with GRBL-compatible firmware, and set the buffer size to match it.</small>
+        </label>
+        <label class="field"><span>Receive buffer (bytes)</span><input name="rxBufferSize" type="number" min="16" max="16384"></label>
+        <small class="muted" style="align-self:end">GRBL on Uno/Nano: 128</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>Display</legend>
+        <label class="check"><input type="checkbox" name="showTravel"> Show pen-up moves</label>
+        <label class="check"><input type="checkbox" name="followCode"> Follow current line</label>
+        <label class="field full"><span>Status polling</span>
+          <select name="statusPollMs">
+            <option value="0">Off</option>
+            <option value="250">Every 250 ms</option>
+            <option value="500">Every 500 ms</option>
+            <option value="1000">Every second</option>
+          </select>
+          <small>Sends GRBL “?” for live position. Only enable if your firmware supports realtime status reports.</small>
+        </label>
+      </fieldset>
+
+      <menu>
+        <button value="cancel" formnovalidate>Cancel</button>
+        <button value="save" class="primary" id="saveSettingsBtn">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
 
 </body>
-
 </html>

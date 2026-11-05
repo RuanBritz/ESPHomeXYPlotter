@@ -1,0 +1,63 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Install dependencies",
+      "type": "npm",
+      "script": "install",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start server",
+      "type": "npm",
+      "script": "start",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "Start server (dev, auto-restart)",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "GRBL simulator",
+      "type": "npm",
+      "script": "simulator",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Run tests",
+      "type": "npm",
+      "script": "test",
+      "problemMatcher": [],
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "ESPHome: validate config",
+      "type": "shell",
+      "command": "esphome config xy-plotter-bridge.yaml",
+      "options": { "cwd": "${workspaceFolder}/firmware/esphome" },
+      "problemMatcher": []
+    },
+    {
+      "label": "ESPHome: flash over USB / OTA",
+      "type": "shell",
+      "command": "esphome run xy-plotter-bridge.yaml",
+      "options": { "cwd": "${workspaceFolder}/firmware/esphome" },
+      "problemMatcher": []
+    },
+    {
+      "label": "ESPHome: show logs",
+      "type": "shell",
+      "command": "esphome logs xy-plotter-bridge.yaml",
+      "options": { "cwd": "${workspaceFolder}/firmware/esphome" },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,1 +1,8 @@
-node_modules
+node_modules/
+.env
+*.log
+.DS_Store
+
+# ESPHome
+firmware/esphome/secrets.yaml
+firmware/esphome/.esphome/

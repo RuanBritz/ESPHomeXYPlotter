@@ -1,0 +1,86 @@
+# ESPHome config: ESP32 as a WiFi <-> serial bridge for a GRBL plotter controller.
+# The web UI connects to <esp-ip>:1234 over TCP; bytes are passed straight through
+# to the GRBL board's UART. See docs/esp-setup.md.
+
+substitutions:
+  name: xy-plotter
+  friendly_name: XY Plotter
+  bridge_port: "1234"     # must match the Port field in the web UI
+  grbl_baud: "115200"     # GRBL 1.1 default
+  uart_tx: GPIO17         # ESP TX -> GRBL board RX (D0 on an Uno)
+  uart_rx: GPIO16         # ESP RX <- GRBL board TX (D1 on an Uno), via level shifter/divider
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Logs go to USB (UART0) and over WiFi. GRBL is on UART2 (GPIO16/17), so the two never mix.
+logger:
+
+api:
+  reboot_timeout: 0s      # Home Assistant is optional: don't reboot mid-plot when no API client is connected
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none   # lower latency, fewer dropped connections during long plots
+  reboot_timeout: 15min   # reboot to recover if WiFi stays down this long (the default, made explicit)
+  manual_ip:              # a fixed IP so the web UI address never changes (or use a DHCP reservation)
+    static_ip: !secret plotter_ip
+    gateway: !secret gateway_ip
+    subnet: 255.255.255.0
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+status_led:
+  pin: GPIO2              # on-board LED of esp32dev: blinks while WiFi/API are not connected
+
+external_components:
+  # Pinned to a known commit so upstream changes can't silently break an OTA build.
+  # To update: git ls-remote https://github.com/oxan/esphome-stream-server HEAD
+  - source: github://oxan/esphome-stream-server@9e05b0a3fea78a0ab7c11338327e5492f0c95b43
+    refresh: never
+
+uart:
+  id: grbl_uart
+  tx_pin: ${uart_tx}
+  rx_pin: ${uart_rx}
+  baud_rate: ${grbl_baud}
+  rx_buffer_size: 1024
+
+stream_server:
+  uart_id: grbl_uart
+  port: ${bridge_port}
+  buffer_size: 1024
+
+binary_sensor:
+  - platform: stream_server
+    connected:
+      name: Web UI connected
+
+sensor:
+  - platform: wifi_signal
+    name: WiFi signal
+    update_interval: 60s
+  - platform: uptime
+    name: Uptime
+
+button:
+  - platform: restart
+    name: Restart
+  - platform: safe_mode
+    name: Restart (safe mode)

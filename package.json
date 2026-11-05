@@ -1,16 +1,21 @@
 {
-  "name": "esp-tcp-gcode",
-  "version": "1.0.0",
-  "main": "index.js",
+  "name": "esphome-xy-plotter",
+  "version": "2.0.0",
+  "description": "Web UI for streaming G-code to an ESP32 XY pen plotter over TCP",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "start": "node index.js"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "simulator": "node tools/grbl-simulator.js",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "body-parser": "^1.20.2",
-    "express": "^4.21.2",
-    "multer": "^1.4.5-lts.2",
-    "net": "^1.0.2",
-    "serialport": "^13.0.0",
-    "ws": "^8.18.1"
-  }
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "license": "MIT"
 }
