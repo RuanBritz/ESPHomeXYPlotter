@@ -212,6 +212,20 @@ input[type='checkbox'] { accent-color: var(--accent); width: 15px; height: 15px;
   display: flex; gap: 12px; font-size: 12px; color: var(--muted);
   background: rgba(14, 16, 21, 0.8); padding: 5px 10px; border-radius: 6px;
 }
+.preview-tools button.active { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+.preview-pane.simulating .legend { bottom: 62px; }
+.legend .sim-only { display: none; }
+.preview-pane.simulating .legend .sim-only { display: inline; }
+.sim-bar {
+  position: absolute; left: 10px; right: 10px; bottom: 10px;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(14, 16, 21, 0.9); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+}
+.sim-bar input[type='range'] { flex: 1; min-width: 80px; accent-color: var(--accent); cursor: pointer; padding: 0; border: none; background: none; }
+.sim-bar select { padding: 3px 6px; font-size: 12px; }
+.sim-bar .icon { width: 28px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.sim-info { display: flex; flex-direction: column; font-size: 11.5px; line-height: 1.3; width: 170px; min-width: 0; }
+.sim-info .sim-code { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: pre; }
 .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
 .drop-hint {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;

@@ -71,11 +71,30 @@
           <div class="preview-tools">
             <button id="fitBtn" class="small" title="Fit drawing (double-click)">Fit</button>
             <button id="originBtn" class="small" title="Show bed from origin">Origin</button>
+            <button id="simBtn" class="small" title="Scrub through the G-code to see how it will plot" disabled>Simulate</button>
+          </div>
+          <div id="simBar" class="sim-bar hidden">
+            <button id="simPlayBtn" class="small icon" title="Play / pause (Space)" aria-label="Play">
+              <svg id="simPlayIcon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+            </button>
+            <input type="range" id="simSlider" min="0" max="0" value="0" step="1" aria-label="Simulation position">
+            <select id="simSpeed" title="Playback speed" aria-label="Playback speed">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="4">4×</option>
+              <option value="16">16×</option>
+            </select>
+            <div class="sim-info">
+              <span class="mono" id="simLine">0 / 0</span>
+              <span class="mono sim-code" id="simCode"></span>
+            </div>
+            <button id="simFromBtn" class="small" title="Use this line as the job's “From line”">Start here</button>
           </div>
           <div class="legend">
             <span><i style="background:#5b8cff"></i>Plotted</span>
             <span><i style="background:#7d869b"></i>To plot</span>
             <span><i style="background:#f5a524;opacity:.6"></i>Pen up</span>
+            <span class="sim-only"><i style="background:#ff9f1c"></i>Pen up (moved)</span>
           </div>
         </div>
         <div id="codePane" class="pane hidden">

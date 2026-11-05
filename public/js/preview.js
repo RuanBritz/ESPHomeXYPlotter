@@ -10,9 +10,11 @@ const COLORS = {
   travel: 'rgba(245, 165, 36, 0.35)',
   done: '#5b8cff',
   doneTravel: 'rgba(91, 140, 255, 0.25)',
+  simTravel: '#ff9f1c', // pen-up moves already made, while simulating
   bounds: 'rgba(230, 232, 238, 0.35)',
   label: '#8b93a7',
   pen: '#ffffff',
+  penDown: '#5b8cff',
 };
 
 const STRIDE = 6; // x1, y1, x2, y2, down, lineIndex
@@ -23,6 +25,7 @@ export class Preview {
   #doneLine = 0; // lines < doneLine are plotted
   #doneSeg = 0; // segments drawn on the progress layer
   #marker = null; // {x, y}
+  #head = null; // simulated pen: {x, y, down, partial: [x1, y1, x2, y2, down, ...]}
   #view = { scale: 2, ox: 40, oy: 400 }; // screen = (ox + x*scale, oy - y*scale) in CSS px
   #autoFit = true;
   #raf = 0;
@@ -36,6 +39,7 @@ export class Preview {
       overlay: overlay.getContext('2d'),
     };
     this.showTravel = true;
+    this.simulating = false;
     new ResizeObserver(() => this.#resize()).observe(base.parentElement);
     this.#bindInteraction(overlay);
   }
@@ -52,6 +56,12 @@ export class Preview {
 
   clear() {
     this.setProgram({ segments: new Float32Array(0), bounds: null });
+  }
+
+  /** While simulating, pen-up moves already made get their own colour. */
+  setSimulating(on) {
+    this.simulating = on;
+    this.#invalidate('progress', 'overlay');
   }
 
   setShowTravel(show) {
@@ -71,6 +81,15 @@ export class Preview {
   /** Current pen position from status reports (work coordinates), or null. */
   setMarker(pos) {
     this.#marker = pos;
+    this.#invalidate('overlay');
+  }
+
+  /**
+   * Simulated pen, drawn instead of the live marker: its position, whether the pen is down,
+   * and the part of the current line drawn so far. null to go back to the live marker.
+   */
+  setHead(head) {
+    this.#head = head;
     this.#invalidate('overlay');
   }
 
@@ -240,32 +259,74 @@ export class Preview {
     }
     this.#doneSeg = i;
     ctx.lineCap = 'round';
-    if (this.showTravel) {
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = COLORS.doneTravel;
-      ctx.stroke(travel);
-    }
+    if (this.showTravel) this.#strokeTravel(ctx, travel);
     ctx.lineWidth = 1.75;
     ctx.strokeStyle = COLORS.done;
     ctx.stroke(draw);
   }
 
+  #strokeTravel(ctx, path) {
+    if (this.simulating) {
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = COLORS.simTravel;
+      ctx.setLineDash([4, 3]);
+    } else {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = COLORS.doneTravel;
+    }
+    ctx.stroke(path);
+    ctx.setLineDash([]);
+  }
+
   #drawOverlay(width, height) {
     const ctx = this.ctx.overlay;
     ctx.clearRect(0, 0, width, height);
+    if (this.#head) return this.#drawHead(ctx, this.#head);
     let pos = this.#marker;
     if (!pos && this.#doneSeg > 0) {
       const s = this.#segments, i = this.#doneSeg - STRIDE;
       pos = { x: s[i + 2], y: s[i + 3] };
     }
     if (!pos) return;
-    const x = this.#tx(pos.x), y = this.#ty(pos.y);
-    ctx.strokeStyle = COLORS.pen;
+    this.#drawCrosshair(ctx, this.#tx(pos.x), this.#ty(pos.y));
+  }
+
+  #drawCrosshair(ctx, x, y, color = COLORS.pen) {
+    ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath();
     ctx.moveTo(x - 11, y); ctx.lineTo(x - 3, y); ctx.moveTo(x + 3, y); ctx.lineTo(x + 11, y);
     ctx.moveTo(x, y - 11); ctx.lineTo(x, y - 3); ctx.moveTo(x, y + 3); ctx.lineTo(x, y + 11);
+    ctx.stroke();
+  }
+
+  /** The line being drawn so far, then the pen: a filled dot when down, a crosshair when up. */
+  #drawHead(ctx, { x, y, down, partial }) {
+    const draw = new Path2D(), travel = new Path2D();
+    for (let i = 0; i < partial.length; i += 5) {
+      const p = partial[i + 4] === 1 ? draw : travel;
+      p.moveTo(this.#tx(partial[i]), this.#ty(partial[i + 1]));
+      p.lineTo(this.#tx(partial[i + 2]), this.#ty(partial[i + 3]));
+    }
+    ctx.lineCap = 'round';
+    if (this.showTravel) this.#strokeTravel(ctx, travel);
+    ctx.lineWidth = 1.75;
+    ctx.strokeStyle = COLORS.done;
+    ctx.stroke(draw);
+
+    const sx = this.#tx(x), sy = this.#ty(y);
+    if (!down) return this.#drawCrosshair(ctx, sx, sy, COLORS.simTravel);
+    ctx.beginPath();
+    ctx.arc(sx, sy, 9, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(91, 140, 255, 0.25)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.penDown;
+    ctx.fill();
+    ctx.strokeStyle = COLORS.pen;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
   }
 

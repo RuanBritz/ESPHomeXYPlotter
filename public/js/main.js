@@ -22,6 +22,7 @@ const program = {
   lines: [],
   analysis: null,
   cumLength: new Float64Array(1), // path length up to (not including) each line, for the ETA
+  segStart: new Int32Array(1), // first segment of each line; line i's segments are [segStart[i], segStart[i + 1])
 };
 let uploading = false;
 
@@ -109,9 +110,15 @@ function showProgram(id, text) {
   for (let i = 0; i < s.length; i += 6) cum[s[i + 5] + 1] += Math.hypot(s[i + 2] - s[i], s[i + 3] - s[i + 1]);
   for (let i = 1; i < cum.length; i++) cum[i] += cum[i - 1];
   program.cumLength = cum;
+  const segStart = new Int32Array(program.lines.length + 1);
+  for (let i = 0; i < s.length; i += 6) segStart[s[i + 5] + 1]++;
+  for (let i = 1; i < segStart.length; i++) segStart[i] += segStart[i - 1];
+  program.segStart = segStart;
 
   if (!editor.dirty) preview.setProgram(program.analysis);
   codeList.setLines(program.lines);
+  $('simSlider').max = program.lines.length;
+  if (sim.on) id === null ? setSimulating(false) : setSimLine(sim.line); // re-apply over the new program
   if (editor.open && !editor.dirty) openEditor(); // another tab changed the job: show it
   $('dropHint').classList.toggle('hidden', id !== null);
 
@@ -180,7 +187,7 @@ function renderMachine() {
       $('posY').textContent = fmt(m.wpos.y);
     }
   }
-  preview.setMarker(m?.wpos ?? null);
+  if (!sim.on) preview.setMarker(m?.wpos ?? null);
 }
 
 function renderJob() {
@@ -233,6 +240,7 @@ function renderProgress() {
   $('etaWrap').classList.toggle('hidden', !showEta);
   if (showEta) $('eta').textContent = formatDuration((elapsedMs * (1 - fraction)) / fraction);
 
+  if (sim.on) return; // the simulation owns the preview and listing
   preview.setProgress(line);
   codeList.setCurrent(line, { follow: settings.followCode && state.job.state === 'running' });
 }
@@ -261,6 +269,7 @@ function updateEnabled() {
   $('fileInput').disabled = running || !online;
   $('openBtn').style.opacity = running || !online ? 0.4 : '';
 
+  $('simBtn').disabled = js === 'empty';
   $('editBtn').disabled = running || js === 'empty';
   $('downloadBtn').disabled = js === 'empty';
   $('applyEditBtn').disabled = running || !online;
@@ -385,6 +394,7 @@ function renderEditor() {
 
 /** Open the editor on the current program, with the caret on the "From line" line. */
 function openEditor() {
+  setSimulating(false); // the editor redraws the preview from its own text
   editor.open = true;
   editor.dirty = false;
   editorEl.value = program.text;
@@ -465,6 +475,124 @@ document.querySelectorAll('.tabs button').forEach((tab) =>
 );
 $('fitBtn').addEventListener('click', () => preview.fit());
 $('originBtn').addEventListener('click', () => preview.fitOrigin());
+
+// ---- simulation: scrub or play through the program in the preview, without touching the job
+
+const SIM_SECONDS = 20; // at 1×, the whole drawing plays in this long
+const sim = { on: false, line: 0, playing: false, dist: 0, last: 0, raf: 0 };
+const PLAY_ICON = '<polygon points="6 3 20 12 6 21 6 3"/>';
+const PAUSE_ICON = '<rect x="5" y="4" width="5" height="16"/><rect x="14" y="4" width="5" height="16"/>';
+
+function setSimulating(on) {
+  if (on === sim.on) return;
+  sim.on = on;
+  setSimPlaying(false);
+  $('simBtn').classList.toggle('active', on);
+  $('simBar').classList.toggle('hidden', !on);
+  $('previewPane').classList.toggle('simulating', on);
+  preview.setSimulating(on);
+  if (on) {
+    preview.setMarker(null); // the marker follows the simulated pen instead
+    setSimLine(0);
+  } else {
+    // Back to the live job.
+    preview.setHead(null);
+    preview.setMarker(state.machine?.wpos ?? null);
+    preview.setProgress(state.progress.line);
+    codeList.setCurrent(state.progress.line);
+  }
+}
+
+/**
+ * Show the program as if lines before `line` have been plotted, and `drawn` mm of
+ * line `line` itself (0 when scrubbing: the pen waits at the start of that line).
+ */
+function setSimLine(line, drawn = 0) {
+  const total = program.lines.length;
+  sim.line = Math.max(0, Math.min(total, Math.round(line) || 0));
+  $('simSlider').value = sim.line;
+  $('simLine').textContent = `${sim.line.toLocaleString()} / ${total.toLocaleString()}`;
+  $('simCode').textContent = program.lines[sim.line]?.trim() ?? 'end';
+  preview.setProgress(sim.line);
+  preview.setHead(simHead(sim.line, drawn));
+  codeList.setCurrent(sim.line, { follow: true }); // same meaning as during a job: the next line to send
+}
+
+/** Where the pen is after drawing `drawn` mm of line `line`, and the part of that line drawn so far. */
+function simHead(line, drawn) {
+  const s = program.analysis.segments;
+  const first = program.segStart[line], end = program.segStart[Math.min(line + 1, program.lines.length)];
+  const partial = [];
+  let head = null;
+  if (first > 0) {
+    const i = (first - 1) * 6; // pen rests at the end of the last move before this line
+    head = { x: s[i + 2], y: s[i + 3], down: s[i + 4] === 1, partial };
+  }
+  for (let n = first; n < end && drawn > 0; n++) {
+    const i = n * 6;
+    const [x1, y1, x2, y2, down] = [s[i], s[i + 1], s[i + 2], s[i + 3], s[i + 4]];
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    const f = len > 0 ? Math.min(1, drawn / len) : 1;
+    const x = x1 + (x2 - x1) * f, y = y1 + (y2 - y1) * f;
+    partial.push(x1, y1, x, y, down);
+    head = { x, y, down: down === 1, partial };
+    drawn -= len;
+  }
+  return head;
+}
+
+/** First line whose cumulative path length reaches `dist`. */
+function lineAtDistance(dist) {
+  const cum = program.cumLength;
+  let lo = 0, hi = cum.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cum[mid] >= dist) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
+}
+
+function setSimPlaying(playing) {
+  sim.playing = playing;
+  cancelAnimationFrame(sim.raf);
+  $('simPlayIcon').innerHTML = playing ? PAUSE_ICON : PLAY_ICON;
+  $('simPlayBtn').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  if (!playing) return;
+  if (sim.line >= program.lines.length) setSimLine(0); // replay from the start
+  sim.dist = program.cumLength[sim.line];
+  sim.last = performance.now();
+  sim.raf = requestAnimationFrame(simTick);
+}
+
+function simTick(now) {
+  const cum = program.cumLength;
+  const total = cum[cum.length - 1];
+  const dt = Math.min(0.1, (now - sim.last) / 1000); // don't jump after a background tab
+  sim.last = now;
+  sim.dist += (total / SIM_SECONDS) * Number($('simSpeed').value) * dt;
+  if (sim.dist >= total) {
+    setSimLine(program.lines.length);
+    return setSimPlaying(false);
+  }
+  // cum[k - 1] < dist <= cum[k]: line k - 1 is being drawn.
+  const line = Math.max(0, lineAtDistance(sim.dist) - 1);
+  setSimLine(line, sim.dist - cum[line]);
+  sim.raf = requestAnimationFrame(simTick);
+}
+
+$('simBtn').addEventListener('click', () => setSimulating(!sim.on));
+$('simPlayBtn').addEventListener('click', () => setSimPlaying(!sim.playing));
+$('simSlider').addEventListener('input', (e) => {
+  setSimLine(Number(e.target.value));
+  sim.dist = program.cumLength[sim.line]; // keep playing from where it was dragged to
+});
+$('simFromBtn').addEventListener('click', () => {
+  if (state.job.state === 'running') return toast('The job is running; pause it to change the line', { error: true });
+  const line = Math.min(sim.line + 1, Math.max(1, program.lines.length));
+  $('lineInput').value = line;
+  toast(`From line set to ${line}`);
+});
 
 // ---- machine
 
@@ -581,6 +709,10 @@ $('showJobTraffic').addEventListener('change', (e) => {
 // ---- keyboard jogging
 
 document.addEventListener('keydown', (e) => {
+  if (sim.on && e.key === ' ' && !$('settingsDialog').open && (e.target === $('simSlider') || !e.target.closest('input, select, textarea, button'))) {
+    e.preventDefault();
+    return setSimPlaying(!sim.playing);
+  }
   if (!settings.keyboardJog || e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
   if (e.target.closest('input, select, textarea, dialog') || $('settingsDialog').open) return;
   const dir = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
