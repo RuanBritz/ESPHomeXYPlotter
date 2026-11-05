@@ -10,7 +10,7 @@ const HISTORY_SIZE = 300;
  *   { type: 'connection', ...controller.snapshot() }
  *   { type: 'job', ...runner.snapshot() }
  *   { type: 'progress', line, totalLines, elapsedMs }
- *   { type: 'machine', state, wpos, mpos, feed }
+ *   { type: 'machine', state, wpos, mpos, feed, estimated? }  status report, or a position estimate
  *   { type: 'log', dir, text, source, t }
  */
 export function attachWebSocket(server, { controller, runner }) {
@@ -40,6 +40,7 @@ export function attachWebSocket(server, { controller, runner }) {
   runner.on('log', log);
   controller.on('state', (s) => broadcast({ type: 'connection', ...s }));
   controller.on('status', (s) => broadcast({ type: 'machine', ...s }));
+  controller.on('estimate', (s) => broadcast({ type: 'machine', ...s }));
   runner.on('state', (s) => broadcast({ type: 'job', ...s }));
   runner.on('progress', (p) => broadcast({ type: 'progress', ...p }));
 

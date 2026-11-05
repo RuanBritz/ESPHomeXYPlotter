@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { TcpConnection } from '../transport/tcp-connection.js';
 import { parseResponse } from './protocol.js';
+import { PositionEstimate } from './position.js';
 
 export class GrblError extends Error {
   constructor(code, message, command) {
@@ -62,6 +63,9 @@ export class GrblController extends EventEmitter {
   #wco = { x: 0, y: 0, z: 0 };
   #address = null;
   #pollTimer = null;
+  #position = new PositionEstimate();
+  #estimateTimer = null;
+  #lastStatusAt = 0;
 
   constructor({
     connection = new TcpConnection(),
@@ -133,8 +137,11 @@ export class GrblController extends EventEmitter {
     }
     this.lastError = null;
     this.#reconnectAttempt = 0;
+    this.#position.reset();
+    this.#lastStatusAt = 0;
     this.#setState('connected');
     this.#log('info', `Connected to ${host}:${port}`);
+    this.#emitEstimate();
   }
 
   disconnect() {
@@ -258,7 +265,10 @@ export class GrblController extends EventEmitter {
     switch (res.kind) {
       case 'ok':
         this.#log('rx', text, source);
-        this.#settle((item) => item.resolve(text));
+        this.#settle((item) => {
+          if (this.#position.apply(item.line)) this.#scheduleEstimate();
+          item.resolve(text);
+        });
         break;
       case 'error':
         this.#log('error', `${text} — ${res.message}`, source);
@@ -273,11 +283,14 @@ export class GrblController extends EventEmitter {
         if (s.wco) this.#wco = s.wco;
         if (!s.wpos && s.mpos) s.wpos = { x: s.mpos.x - this.#wco.x, y: s.mpos.y - this.#wco.y, z: s.mpos.z - this.#wco.z };
         this.machine = { state: s.state, wpos: s.wpos, mpos: s.mpos, feed: s.feed, at: Date.now() };
+        this.#lastStatusAt = this.machine.at;
+        if (s.wpos) this.#position.set(s.wpos.x, s.wpos.y);
         this.emit('status', this.machine);
         break;
       }
       case 'welcome':
         this.#log('info', text);
+        this.#position.softReset();
         this.#failAll(new ConnectionLostError('Controller reset'));
         this.emit('reset');
         break;
@@ -310,6 +323,7 @@ export class GrblController extends EventEmitter {
         this.lastError = null;
         this.#setState('connected');
         this.#log('info', `Reconnected to ${host}:${port}`);
+        this.#emitEstimate();
         this.emit('reconnected');
       } catch (err) {
         this.lastError = err.message;
@@ -349,6 +363,29 @@ export class GrblController extends EventEmitter {
       if (this.isConnected) this.connection.write('?');
     }, this.statusPollMs);
     this.#pollTimer.unref?.();
+  }
+
+  /** Coalesce estimate updates (a job acknowledges many lines a second). */
+  #scheduleEstimate() {
+    if (this.#estimateTimer) return;
+    this.#estimateTimer = setTimeout(() => {
+      this.#estimateTimer = null;
+      this.#emitEstimate();
+    }, 100);
+    this.#estimateTimer.unref?.();
+  }
+
+  /**
+   * Publish the estimated position as `machine` ('estimate' event), unless real
+   * status reports are arriving.
+   */
+  #emitEstimate() {
+    if (!this.isConnected) return;
+    const reportsFresh = this.#lastStatusAt && Date.now() - this.#lastStatusAt < (this.statusPollMs || 1000) * 3 + 1000;
+    if (reportsFresh) return;
+    const p = this.#position.position;
+    this.machine = { state: null, wpos: p && { x: p.x, y: p.y, z: null }, mpos: null, feed: null, estimated: true, at: Date.now() };
+    this.emit('estimate', this.machine);
   }
 
   #setState(state) {

@@ -14,7 +14,7 @@ export const DEFAULTS = Object.freeze({
   jogMode: 'g91',
   invertX: false,
   invertY: true, // the original UI sent Y-10 for "Y+" — keep that behaviour by default
-  keyboardJog: false,
+  keyboardJog: true,
   showTravel: true,
   followCode: true,
   statusPollMs: 0,

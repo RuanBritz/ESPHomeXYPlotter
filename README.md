@@ -21,7 +21,8 @@ The plotter firmware should speak a GRBL-compatible protocol over a raw TCP sock
 - **Pause / resume / stop**, and start from any line (click a line in the G-code tab). On resume, the pen is lifted, moved back to where the file left off, and the pen, units, distance mode and feed rate are restored.
 - **Recovery**: if the connection drops, the server reconnects with backoff and can resume the job automatically. If the controller reset, the job stays paused, because the position may be lost.
 - **G-code errors pause the job** at the failing line, with the GRBL error explained. You can skip the line and resume.
-- **Machine controls**: jog with a 0.1/1/10/50 mm step and optional arrow keys, pen up/down, set zero, go to zero, Hold `!`, Cycle `~`, Reset `Ctrl-X`, Unlock `$X`, and the settings dump `$$`.
+- **Machine controls**: jog with a 0.1/1/10/50 mm step or the arrow keys (can be turned off in Settings), pen up/down, set zero, go to zero, Hold `!`, Cycle `~`, Reset `Ctrl-X`, Unlock `$X`, and the settings dump `$$`.
+- **Pen position on the preview**: a crosshair shows where the pen is. Without status reports, the server estimates it from the commands the plotter acknowledged (jogs, go/set zero, box, frame, console, jobs), shown as `≈ X … Y …`. The estimate assumes X0 Y0 when you connect, and is lost after homing (`$H`) or `G28`/`G30` until the next absolute XY move.
 - **Box & frame**: trace the drawing's bounds with the pen up to check placement on the paper, or draw a box.
 - **Console** with command history (↑/↓). Job traffic is hidden unless you turn it on.
 - Works offline (no CDN), and the layout adapts to phones and tablets.
@@ -70,7 +71,7 @@ Per-browser preferences are in the ⚙ dialog: pen up/down commands, jog method,
 
 > **Jog method.** The default sends `G91 G1 …` followed by `G90`, which works with any GRBL-like firmware. If your firmware supports GRBL 1.1 `$J=` jogging, select it in Settings.
 >
-> **Status polling** sends GRBL's realtime `?` to show live position. Leave it off unless your firmware supports it.
+> **Status polling** sends GRBL's realtime `?` to show the real position instead of the estimate. Leave it off unless your firmware supports it.
 >
 > **Invert Y** is on by default, because the previous version sent `Y-10` for the "Y+" button.
 

@@ -177,11 +177,15 @@ function renderConnection() {
 function renderMachine() {
   const m = state.machine;
   const pill = $('machinePill');
-  pill.classList.toggle('hidden', !m);
+  pill.classList.toggle('hidden', !m?.state); // estimates have no machine state
   $('position').classList.toggle('hidden', !m?.wpos);
+  $('position').classList.toggle('estimated', !!m?.estimated);
+  $('position').title = m?.estimated ? 'Estimated from the commands sent (no status reports)' : '';
   if (m) {
-    const tone = { Idle: 'ok', Run: 'info', Jog: 'info', Hold: 'warn', Door: 'warn', Alarm: 'danger' }[m.state] ?? '';
-    setPill(pill, m.state, tone, m.state === 'Run' || m.state === 'Jog');
+    if (m.state) {
+      const tone = { Idle: 'ok', Run: 'info', Jog: 'info', Hold: 'warn', Door: 'warn', Alarm: 'danger' }[m.state] ?? '';
+      setPill(pill, m.state, tone, m.state === 'Run' || m.state === 'Jog');
+    }
     if (m.wpos) {
       $('posX').textContent = fmt(m.wpos.x);
       $('posY').textContent = fmt(m.wpos.y);
