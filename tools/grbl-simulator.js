@@ -97,4 +97,4 @@ const server = net.createServer((socket) => {
   socket.on('error', () => {});
 });
 
-server.listen(port, '127.0.0.1', () => console.log(`GRBL simulator listening on 127.0.0.1:${port}`));
+server.listen(port, '0.0.0.0', () => console.log(`GRBL simulator listening on 0.0.0.0:${port}`));

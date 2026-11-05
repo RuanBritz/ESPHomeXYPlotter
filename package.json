@@ -11,6 +11,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "simulator": "node tools/grbl-simulator.js",
+    "mcp": "node src/mcp/server.js",
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {

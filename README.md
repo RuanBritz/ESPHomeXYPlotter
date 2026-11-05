@@ -92,6 +92,8 @@ src/
   api/routes.js            REST API (all actions)
   api/ws.js                WebSocket push of state, progress, machine status and log
   api/targets.js           Validates which hosts the server may connect to
+  mcp/server.js            MCP server (stdio) for AI agents, a client of the REST API
+  mcp/draw.js, render.js   Polylines -> G-code; toolpath -> PNG preview
 public/
   index.html, css/app.css
   js/main.js               UI wiring and rendering
@@ -101,6 +103,27 @@ public/
   js/socket.js, settings.js, util.js
 test/                      node:test suites against a fake GRBL TCP server
 ```
+
+## AI agent control (MCP)
+
+[`src/mcp/server.js`](src/mcp/server.js) is a dependency-free [MCP](https://modelcontextprotocol.io) server (stdio) that gives an AI agent full control of the plotter. It talks to the running web server's API, so keep `npm start` running. Everything the agent does shows up live in the browser.
+
+- **Claude Code**: the included [`.mcp.json`](.mcp.json) registers it automatically when you open this folder. From anywhere else, run `claude mcp add xy-plotter -- node /path/to/ESPHomeXYPlotter/src/mcp/server.js`.
+- **Other clients**: command `node`, args `["/path/to/src/mcp/server.js"]`.
+
+| Tool | |
+| --- | --- |
+| `get_state` | Connection, machine status and job progress |
+| `connect` / `disconnect` | Open or close the TCP connection |
+| `send_commands` | Any lines, including GRBL `$` commands (`$$`, `$X`, `$H`, `$N=…`) |
+| `realtime` | hold / resume / status / reset |
+| `draw_polylines` | Turn `[[x,y],…]` polylines (mm) into G-code with pen up/down and load it as the job |
+| `load_gcode` / `get_gcode` / `unload_job` | Raw G-code jobs |
+| `preview` | PNG of the toolpath (black = pen down, grey = travel, grid and origin axes) |
+| `start_job` / `pause_job` / `resume_job` / `stop_job` | Run control |
+| `wait_for_job` | Block until the job finishes or pauses |
+
+`draw_polylines` and `load_gcode` return the preview image, so the agent can check its drawing before it calls `start_job`. Pen commands and the drawing feed come from `PEN_UP`, `PEN_DOWN` and `DRAW_FEED` in `.env` (see `.env.example`). To try it without hardware, run `npm run simulator` and ask the agent to connect to `127.0.0.1:1234`.
 
 ## API
 
